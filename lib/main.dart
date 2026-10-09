@@ -27,15 +27,9 @@ void main() async {
   }
 
   runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AppAuthProvider()),
-        ChangeNotifierProvider(create: (_) => EventProvider()),
-      ],
-      child: ScoringApp(
-        firebaseReady: firebaseReady,
-        firebaseError: firebaseError,
-      ),
+    ScoringApp(
+      firebaseReady: firebaseReady,
+      firebaseError: firebaseError,
     ),
   );
 }
@@ -52,13 +46,17 @@ class ScoringApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Scoring App',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      home: firebaseReady
-          ? const AppNavigationRoot()
-          : FirebaseConfigPendingScreen(errorMessage: firebaseError),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AppAuthProvider()),
+        ChangeNotifierProvider(create: (_) => EventProvider()),
+      ],
+      child: MaterialApp(
+        title: 'ScoreSync Live',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        home: const AppNavigationRoot(),
+      ),
     );
   }
 }
