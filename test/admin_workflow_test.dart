@@ -36,8 +36,6 @@ void main() {
 
       provider.setSelectedEvent(sampleEvent);
 
-      // Verify FirestoreService judge generation produces expected unique codes
-      final service = FirestoreService();
       expect(sampleEvent.title, equals('Singing Competition'));
       expect(c1.number, equals(1));
       expect(c2.number, equals(2));
