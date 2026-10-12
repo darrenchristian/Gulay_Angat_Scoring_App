@@ -8,7 +8,11 @@ class CriteriaManagerView extends StatelessWidget {
 
   const CriteriaManagerView({super.key, required this.event});
 
-  void _showAddEditCriterionDialog(BuildContext context, [CriterionModel? criterion]) {
+  void _showAddEditCriterionDialog(
+    BuildContext context, {
+    CriterionModel? criterion,
+    int nextOrder = 0,
+  }) {
     final nameCtrl = TextEditingController(text: criterion?.name ?? '');
     final descCtrl = TextEditingController(text: criterion?.description ?? '');
     final maxScoreCtrl = TextEditingController(text: (criterion?.maxScore ?? 100).toString());
@@ -114,7 +118,7 @@ class CriteriaManagerView extends StatelessWidget {
                             description: descCtrl.text.trim(),
                             maxScore: maxScore,
                             weightPercentage: weight,
-                            order: criterion?.order ?? 0,
+                            order: criterion?.order ?? nextOrder,
                           );
 
                           if (criterion == null) {
@@ -165,6 +169,53 @@ class CriteriaManagerView extends StatelessWidget {
     );
   }
 
+  Future<void> _moveCriterion(
+    List<CriterionModel> criteria,
+    int oldIndex,
+    int newIndex,
+  ) async {
+    if (newIndex < 0 || newIndex >= criteria.length || oldIndex == newIndex) {
+      return;
+    }
+    final updated = List<CriterionModel>.from(criteria);
+    final item = updated.removeAt(oldIndex);
+    updated.insert(newIndex, item);
+    await FirestoreService().reorderCriteria(event.id, updated);
+  }
+
+  Future<void> _applyQuickSort(
+    BuildContext context,
+    List<CriterionModel> criteria,
+    String sortType,
+  ) async {
+    if (criteria.length < 2) return;
+    final sorted = List<CriterionModel>.from(criteria);
+    switch (sortType) {
+      case 'weight_desc':
+        sorted.sort((a, b) => b.weightPercentage.compareTo(a.weightPercentage));
+        break;
+      case 'weight_asc':
+        sorted.sort((a, b) => a.weightPercentage.compareTo(b.weightPercentage));
+        break;
+      case 'points_desc':
+        sorted.sort((a, b) => b.maxScore.compareTo(a.maxScore));
+        break;
+      case 'name_asc':
+        sorted.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+    }
+    await FirestoreService().reorderCriteria(event.id, sorted);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Criteria order updated for all judges.'),
+          backgroundColor: AppColors.success,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<CriterionModel>>(
@@ -184,7 +235,7 @@ class CriteriaManagerView extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Total Weight Status Bar
+                // Total Weight & Sort Controls Bar
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
@@ -220,13 +271,85 @@ class CriteriaManagerView extends StatelessWidget {
                             ),
                             Text(
                               (totalWeight == 100.0)
-                                  ? 'Criteria weights total 100% perfectly.'
-                                  : 'Ideal sum is 100% (currently ${totalWeight.toStringAsFixed(1)}%).',
+                                  ? 'Criteria weights total 100% perfectly. Drag or use arrows to sort.'
+                                  : 'Ideal sum is 100% (currently ${totalWeight.toStringAsFixed(1)}%). Drag or use arrows to sort.',
                               style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                             ),
                           ],
                         ),
                       ),
+                      if (criteria.length > 1) ...[
+                        PopupMenuButton<String>(
+                          tooltip: 'Quick Sort Criteria',
+                          onSelected: (val) => _applyQuickSort(context, criteria, val),
+                          itemBuilder: (ctx) => const [
+                            PopupMenuItem(
+                              value: 'weight_desc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.trending_down_rounded, size: 18, color: AppColors.primary),
+                                  SizedBox(width: 8),
+                                  Text('Sort by Weight (High → Low)'),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'weight_asc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.trending_up_rounded, size: 18, color: AppColors.primary),
+                                  SizedBox(width: 8),
+                                  Text('Sort by Weight (Low → High)'),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'points_desc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.score_outlined, size: 18, color: AppColors.primary),
+                                  SizedBox(width: 8),
+                                  Text('Sort by Max Points (High → Low)'),
+                                ],
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'name_asc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.sort_by_alpha_rounded, size: 18, color: AppColors.primary),
+                                  SizedBox(width: 8),
+                                  Text('Sort Alphabetically (A → Z)'),
+                                ],
+                              ),
+                            ),
+                          ],
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.sort_rounded, size: 16, color: AppColors.textPrimary),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Sort',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
@@ -247,7 +370,7 @@ class CriteriaManagerView extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
 
-                // Criteria List
+                // Criteria Reorderable List
                 Expanded(
                   child: criteria.isEmpty
                       ? Center(
@@ -272,23 +395,47 @@ class CriteriaManagerView extends StatelessWidget {
                             ],
                           ),
                         )
-                      : ListView.separated(
+                      : ReorderableListView.builder(
+                          buildDefaultDragHandles: false,
+                          padding: const EdgeInsets.only(bottom: 80),
                           itemCount: criteria.length,
-                          separatorBuilder: (_, _) => const SizedBox(height: 10),
+                          onReorderItem: (oldIndex, newIndex) async {
+                            await _moveCriterion(criteria, oldIndex, newIndex);
+                          },
                           itemBuilder: (context, index) {
                             final crit = criteria[index];
                             return Card(
+                              key: ValueKey(crit.id.isNotEmpty ? crit.id : '${crit.name}_$index'),
+                              margin: const EdgeInsets.only(bottom: 10),
                               child: ListTile(
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                leading: CircleAvatar(
-                                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                                  child: Text(
-                                    '${index + 1}',
-                                    style: const TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.bold,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                leading: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ReorderableDragStartListener(
+                                      index: index,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                        child: Icon(
+                                          Icons.drag_indicator_rounded,
+                                          color: AppColors.textMuted,
+                                          size: 22,
+                                        ),
+                                      ),
                                     ),
-                                  ),
+                                    const SizedBox(width: 4),
+                                    CircleAvatar(
+                                      radius: 18,
+                                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: const TextStyle(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                                 title: Text(
                                   crit.name,
@@ -349,12 +496,35 @@ class CriteriaManagerView extends StatelessWidget {
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
+                                    if (criteria.length > 1) ...[
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.arrow_upward_rounded, size: 18),
+                                        tooltip: 'Move Up',
+                                        onPressed: index > 0
+                                            ? () => _moveCriterion(criteria, index, index - 1)
+                                            : null,
+                                      ),
+                                      IconButton(
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.arrow_downward_rounded, size: 18),
+                                        tooltip: 'Move Down',
+                                        onPressed: index < criteria.length - 1
+                                            ? () => _moveCriterion(criteria, index, index + 1)
+                                            : null,
+                                      ),
+                                    ],
                                     IconButton(
+                                      visualDensity: VisualDensity.compact,
                                       icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.primary),
                                       tooltip: 'Edit',
-                                      onPressed: () => _showAddEditCriterionDialog(context, crit),
+                                      onPressed: () => _showAddEditCriterionDialog(
+                                        context,
+                                        criterion: crit,
+                                      ),
                                     ),
                                     IconButton(
+                                      visualDensity: VisualDensity.compact,
                                       icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.danger),
                                       tooltip: 'Delete',
                                       onPressed: () => _confirmDelete(context, crit),
@@ -370,7 +540,10 @@ class CriteriaManagerView extends StatelessWidget {
             ),
           ),
           floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _showAddEditCriterionDialog(context),
+            onPressed: () => _showAddEditCriterionDialog(
+              context,
+              nextOrder: criteria.length,
+            ),
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
             icon: const Icon(Icons.add_rounded),

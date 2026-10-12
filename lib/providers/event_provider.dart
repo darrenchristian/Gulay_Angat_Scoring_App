@@ -31,7 +31,9 @@ class EventProvider extends ChangeNotifier {
   List<ContestantModel> _contestants = [];
   List<JudgeModel> _judges = [];
   List<ScoreSubmissionModel> _scores = [];
+  bool _hasLoadedJudges = false;
 
+  StreamSubscription? _eventSub;
   StreamSubscription? _criteriaSub;
   StreamSubscription? _contestantsSub;
   StreamSubscription? _judgesSub;
@@ -46,19 +48,27 @@ class EventProvider extends ChangeNotifier {
   void setSelectedEvent(EventModel? event) {
     _selectedEvent = event;
     _cancelSubscriptions();
+    _criteria = [];
+    _contestants = [];
+    _judges = [];
+    _scores = [];
+    _hasLoadedJudges = false;
 
     if (event != null) {
       _listenToEventData(event.id);
-    } else {
-      _criteria = [];
-      _contestants = [];
-      _judges = [];
-      _scores = [];
     }
     notifyListeners();
   }
 
   void _listenToEventData(String eventId) {
+    _eventSub = _firestoreService.getEventStream(eventId).listen((ev) {
+      if (ev != null) {
+        _selectedEvent = ev;
+        _cleanupOrphanedScoresIfNeeded(eventId);
+        notifyListeners();
+      }
+    });
+
     _criteriaSub = _firestoreService.getCriteriaStream(eventId).listen((data) {
       _criteria = data;
       notifyListeners();
@@ -71,16 +81,48 @@ class EventProvider extends ChangeNotifier {
 
     _judgesSub = _firestoreService.getJudgesStream(eventId).listen((data) {
       _judges = data;
+      _hasLoadedJudges = true;
+      _cleanupOrphanedScoresIfNeeded(eventId);
       notifyListeners();
     });
 
     _scoresSub = _firestoreService.getScoresStream(eventId).listen((data) {
       _scores = data;
+      _cleanupOrphanedScoresIfNeeded(eventId);
       notifyListeners();
     });
   }
 
+  bool _isScoreValidForEvent(ScoreSubmissionModel score) {
+    final ev = _selectedEvent;
+    if (ev == null) return true;
+    return ev.isScoreValidAfterReset(
+      score,
+      judgeId: score.judgeId,
+      submittedAt: score.submittedAt,
+      updatedAt: score.updatedAt,
+    );
+  }
+
+  void _cleanupOrphanedScoresIfNeeded(String eventId) {
+    if (!_hasLoadedJudges || _scores.isEmpty) {
+      return;
+    }
+    final validJudgeIds = _judges.map((j) => j.id).toSet();
+    final orphanedOrStale = _scores
+        .where((s) =>
+            !validJudgeIds.contains(s.judgeId) || !_isScoreValidForEvent(s))
+        .toList();
+    if (orphanedOrStale.isNotEmpty) {
+      _firestoreService.deleteScoresByIds(
+        eventId,
+        orphanedOrStale.map((s) => s.id).toList(),
+      );
+    }
+  }
+
   void _cancelSubscriptions() {
+    _eventSub?.cancel();
     _criteriaSub?.cancel();
     _contestantsSub?.cancel();
     _judgesSub?.cancel();
@@ -97,11 +139,19 @@ class EventProvider extends ChangeNotifier {
   List<ContestantRankResult> getLeaderboard() {
     if (_contestants.isEmpty) return [];
 
+    final Set<String> linkedJudgeIds = _judges.map((j) => j.id).toSet();
     final List<ContestantRankResult> results = [];
 
     for (final contestant in _contestants) {
-      // Find all submissions for this contestant
-      final contestantScores = _scores.where((s) => s.contestantId == contestant.id && s.isSubmitted).toList();
+      // Find all submissions for this contestant strictly from currently linked judges
+      // and not older than an Admin score reset
+      final contestantScores = _scores
+          .where((s) =>
+              s.contestantId == contestant.id &&
+              s.isSubmitted &&
+              linkedJudgeIds.contains(s.judgeId) &&
+              _isScoreValidForEvent(s))
+          .toList();
 
       final Map<String, double> perJudgeScores = {};
       final Map<String, List<double>> criteriaAccumulator = {};

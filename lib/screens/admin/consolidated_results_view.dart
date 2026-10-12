@@ -3,11 +3,32 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_colors.dart';
 import '../../models/models.dart';
 import '../../providers/event_provider.dart';
+import '../../services/firestore_service.dart';
+import 'admin_password_confirm_dialog.dart';
 
 class ConsolidatedResultsView extends StatelessWidget {
   final EventModel event;
 
   const ConsolidatedResultsView({super.key, required this.event});
+
+  void _resetAllScores(BuildContext context) async {
+    final confirmed = await showAdminPasswordResetDialog(
+      context: context,
+      title: 'Reset All Judge Scores',
+      message:
+          'This will permanently clear ALL judge scores submitted for "${event.title}". Please enter your admin password to confirm.',
+      onAuthorizedReset: () => FirestoreService().resetAllScoresForEvent(event.id),
+    );
+
+    if (confirmed && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('All judge scores for this event have been reset.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
 
   void _showContestantDetailModal(
     BuildContext context,
@@ -192,13 +213,61 @@ class ConsolidatedResultsView extends StatelessWidget {
       );
     }
 
+    final hasAnySubmittedScores = leaderboard.any((item) => item.submittedJudgeCount > 0);
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: leaderboard.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (context, index) {
+      body: Column(
+        children: [
+          if (hasAnySubmittedScores)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.cardBorder),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.leaderboard_rounded, size: 18, color: AppColors.primary),
+                        SizedBox(width: 8),
+                        Text(
+                          'Live Consolidated Standings',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.danger,
+                        side: const BorderSide(color: AppColors.danger),
+                        minimumSize: const Size(0, 36),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => _resetAllScores(context),
+                      icon: const Icon(Icons.restart_alt_rounded, size: 16),
+                      label: const Text('Reset Scores', style: TextStyle(fontSize: 12)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: leaderboard.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
           final item = leaderboard[index];
           final totalJudges = judges.length;
 
@@ -322,7 +391,10 @@ class ConsolidatedResultsView extends StatelessWidget {
               ),
             ),
           );
-        },
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

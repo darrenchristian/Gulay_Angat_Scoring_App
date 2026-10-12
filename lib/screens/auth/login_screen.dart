@@ -18,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isAdminRegisterMode = false;
 
   // Judge Controller
   final _judgeFormKey = GlobalKey<FormState>();
@@ -48,10 +49,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     FocusScope.of(context).unfocus();
 
     final authProvider = context.read<AppAuthProvider>();
-    await authProvider.loginAdmin(
-      email: _emailController.text,
-      password: _passwordController.text,
-    );
+    if (_isAdminRegisterMode) {
+      await authProvider.registerAdmin(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+    } else {
+      await authProvider.loginAdmin(
+        email: _emailController.text,
+        password: _passwordController.text,
+      );
+    }
   }
 
   void _submitJudge() async {
@@ -80,24 +88,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   // App Branding / Logo
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.emoji_events_rounded,
-                      size: 40,
-                      color: AppColors.primary,
-                    ),
+                  Image.asset(
+                    'assets/gulay_angat_logo.png',
+                    height: 120,
+                    fit: BoxFit.contain,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   const Text(
-                    'ScoreSync Live',
+                    'GulayAngat ScoreSync',
+                    textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 26,
+                      fontSize: 25,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
                       letterSpacing: -0.5,
@@ -186,7 +187,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                   // Tab View
                   SizedBox(
-                    height: 280,
+                    height: 320,
                     child: TabBarView(
                       controller: _tabController,
                       children: [
@@ -317,6 +318,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               if (val == null || val.trim().isEmpty) {
                 return 'Please enter password';
               }
+              if (_isAdminRegisterMode && val.length < 6) {
+                return 'Password must be at least 6 characters';
+              }
               return null;
             },
           ),
@@ -329,14 +333,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     width: 22,
                     child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                   )
-                : const Row(
+                : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('Sign In as Admin'),
-                      SizedBox(width: 8),
-                      Icon(Icons.login_rounded, size: 18),
+                      Text(_isAdminRegisterMode ? 'Create Admin Account' : 'Sign In as Admin'),
+                      const SizedBox(width: 8),
+                      Icon(_isAdminRegisterMode ? Icons.person_add_rounded : Icons.login_rounded, size: 18),
                     ],
                   ),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _isAdminRegisterMode = !_isAdminRegisterMode;
+              });
+              context.read<AppAuthProvider>().clearError();
+            },
+            child: Text(
+              _isAdminRegisterMode
+                  ? 'Already have an Admin account? Sign In'
+                  : "Don't have an Admin account? Create one here",
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),

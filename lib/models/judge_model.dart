@@ -2,16 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class JudgeModel {
   final String id;
-  final String eventId;
+  final String eventId; // Optional legacy field; global judges are linked via EventModel.assignedJudgeIds
   final int judgeNumber;
-  final String accessCode; // The unique ID used to log in
+  final String accessCode; // The unique ID used to log in (e.g. JDG-XXXX)
   final String name;
   final bool isActive;
   final DateTime createdAt;
 
   JudgeModel({
     required this.id,
-    required this.eventId,
+    this.eventId = '',
     required this.judgeNumber,
     required this.accessCode,
     this.name = '',

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1074945046255",
+    "project_id": "scoring-app-8bae2",
+    "storage_bucket": "scoring-app-8bae2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1074945046255:android:fffc978563278cb1bd8d1a",
+        "android_client_info": {
+          "package_name": "com.example.scoring_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDqwsTPxPvDAiCiieHNBfFbRUoFbwKpGTY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

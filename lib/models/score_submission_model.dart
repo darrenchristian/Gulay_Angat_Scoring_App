@@ -12,6 +12,7 @@ class ScoreSubmissionModel {
   final bool isSubmitted;
   final DateTime? submittedAt;
   final DateTime updatedAt;
+  final bool isPendingSync;
 
   ScoreSubmissionModel({
     required this.id,
@@ -25,6 +26,7 @@ class ScoreSubmissionModel {
     this.isSubmitted = false,
     this.submittedAt,
     required this.updatedAt,
+    this.isPendingSync = false,
   });
 
   static String generateId({required String contestantId, required String judgeId}) {
@@ -43,6 +45,7 @@ class ScoreSubmissionModel {
     bool? isSubmitted,
     DateTime? submittedAt,
     DateTime? updatedAt,
+    bool? isPendingSync,
   }) {
     return ScoreSubmissionModel(
       id: id ?? this.id,
@@ -56,6 +59,7 @@ class ScoreSubmissionModel {
       isSubmitted: isSubmitted ?? this.isSubmitted,
       submittedAt: submittedAt ?? this.submittedAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      isPendingSync: isPendingSync ?? this.isPendingSync,
     );
   }
 
@@ -76,10 +80,18 @@ class ScoreSubmissionModel {
 
   factory ScoreSubmissionModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>? ?? {};
-    return ScoreSubmissionModel.fromMap(doc.id, data);
+    return ScoreSubmissionModel.fromMap(
+      doc.id,
+      data,
+      isPendingSync: doc.metadata.hasPendingWrites,
+    );
   }
 
-  factory ScoreSubmissionModel.fromMap(String id, Map<String, dynamic> map) {
+  factory ScoreSubmissionModel.fromMap(
+    String id,
+    Map<String, dynamic> map, {
+    bool isPendingSync = false,
+  }) {
     DateTime parseDate(dynamic val) {
       if (val is Timestamp) return val.toDate();
       if (val is String) return DateTime.tryParse(val) ?? DateTime.now();
@@ -107,6 +119,7 @@ class ScoreSubmissionModel {
       isSubmitted: map['isSubmitted'] as bool? ?? false,
       submittedAt: map['submittedAt'] != null ? parseDate(map['submittedAt']) : null,
       updatedAt: parseDate(map['updatedAt']),
+      isPendingSync: isPendingSync,
     );
   }
 }

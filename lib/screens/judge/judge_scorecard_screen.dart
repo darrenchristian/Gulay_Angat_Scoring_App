@@ -53,17 +53,19 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
     super.dispose();
   }
 
-  double get _totalScore {
+  double _calculateTotalScore(List<CriterionModel> activeCriteria) {
     double total = 0.0;
-    for (final criterion in widget.criteria) {
-      final scoreVal = _scores[criterion.id] ?? 0.0;
+    for (final criterion in activeCriteria) {
+      final scoreVal = _scores[criterion.id] ??
+          (widget.existingScore?.criteriaScores[criterion.id]) ??
+          (criterion.maxScore * 0.8).roundToDouble();
       total += scoreVal;
     }
     return double.parse(total.toStringAsFixed(2));
   }
 
-  double get _maxPossibleScore {
-    return widget.criteria.fold<double>(0.0, (sum, c) => sum + c.maxScore);
+  double _calculateMaxPossibleScore(List<CriterionModel> activeCriteria) {
+    return activeCriteria.fold<double>(0.0, (sum, c) => sum + c.maxScore);
   }
 
   void _updateScore(String criterionId, double newScore, double maxScore) {
@@ -72,8 +74,18 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
     });
   }
 
-  void _confirmAndSubmit() {
-    final double total = _totalScore;
+  void _confirmAndSubmit(List<CriterionModel> activeCriteria) {
+    // Ensure all active criteria have an entry in _scores
+    for (final criterion in activeCriteria) {
+      _scores.putIfAbsent(
+        criterion.id,
+        () =>
+            widget.existingScore?.criteriaScores[criterion.id] ??
+            (criterion.maxScore * 0.8).roundToDouble(),
+      );
+    }
+    final double total = _calculateTotalScore(activeCriteria);
+    final double maxPossible = _calculateMaxPossibleScore(activeCriteria);
 
     showDialog(
       context: context,
@@ -113,7 +125,7 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
                 children: [
                   const Text('Total Awarded:', style: TextStyle(fontWeight: FontWeight.w600)),
                   Text(
-                    '${total.toStringAsFixed(2)} / ${_maxPossibleScore.toStringAsFixed(0)} pts',
+                    '${total.toStringAsFixed(2)} / ${maxPossible.toStringAsFixed(0)} pts',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -136,7 +148,7 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
             ),
             onPressed: () async {
               Navigator.of(ctx).pop();
-              _submitScore();
+              _submitScore(activeCriteria);
             },
             child: const Text('Confirm & Save'),
           ),
@@ -145,10 +157,16 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
     );
   }
 
-  void _submitScore() async {
+  void _submitScore(List<CriterionModel> activeCriteria) async {
     setState(() => _isSubmitting = true);
 
     try {
+      final Map<String, double> activeScores = {
+        for (final c in activeCriteria)
+          c.id: _scores[c.id] ??
+              widget.existingScore?.criteriaScores[c.id] ??
+              (c.maxScore * 0.8).roundToDouble(),
+      };
       final submission = ScoreSubmissionModel(
         id: ScoreSubmissionModel.generateId(
           contestantId: widget.contestant.id,
@@ -158,23 +176,38 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
         contestantId: widget.contestant.id,
         judgeId: widget.judge.id,
         judgeNumber: widget.judge.judgeNumber,
-        criteriaScores: Map.from(_scores),
-        totalScore: _totalScore,
+        criteriaScores: activeScores,
+        totalScore: _calculateTotalScore(activeCriteria),
         remarks: _remarksController.text.trim(),
         isSubmitted: true,
         submittedAt: DateTime.now(),
         updatedAt: DateTime.now(),
       );
 
-      await FirestoreService().submitScore(submission);
+      final bool syncedImmediately = await FirestoreService().submitScore(submission);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Score submitted for #${widget.contestant.number} ${widget.contestant.name}!',
+            content: Row(
+              children: [
+                Icon(
+                  syncedImmediately ? Icons.cloud_done_rounded : Icons.cloud_upload_outlined,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    syncedImmediately
+                        ? 'Score submitted & synced for #${widget.contestant.number} ${widget.contestant.name}!'
+                        : 'Saved offline for #${widget.contestant.number} ${widget.contestant.name} — will auto-sync when internet returns.',
+                  ),
+                ),
+              ],
             ),
-            backgroundColor: AppColors.success,
+            backgroundColor: syncedImmediately ? AppColors.success : AppColors.warning,
+            duration: Duration(seconds: syncedImmediately ? 2 : 4),
           ),
         );
         Navigator.of(context).pop(true);
@@ -194,218 +227,240 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final double total = _totalScore;
+    return StreamBuilder<List<CriterionModel>>(
+      stream: FirestoreService().getCriteriaStream(widget.event.id),
+      initialData: widget.criteria,
+      builder: (context, snapshot) {
+        final activeCriteria = snapshot.data ?? widget.criteria;
+        final double total = _calculateTotalScore(activeCriteria);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text('Score Contestant #${widget.contestant.number}'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14.0),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  widget.judge.displayName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            title: Text('Score Contestant #${widget.contestant.number}'),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 14.0),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      widget.judge.displayName,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Contestant Profile Header Banner
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 26,
-                  backgroundColor: AppColors.primary,
-                  child: Text(
-                    '#${widget.contestant.number}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.contestant.name,
+          body: Column(
+            children: [
+              // Contestant Profile Header Banner
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 26,
+                      backgroundColor: AppColors.primary,
+                      child: Text(
+                        '#${widget.contestant.number}',
                         style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      if (widget.contestant.representation.isNotEmpty)
-                        Text(
-                          widget.contestant.representation,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                      if (widget.contestant.bio.isNotEmpty)
-                        Text(
-                          widget.contestant.bio,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-
-          // Criteria List
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                ...widget.criteria.map((criterion) {
-                  final scoreVal = _scores[criterion.id] ?? 0.0;
-                  final maxScore = criterion.maxScore;
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      criterion.name,
-                                      style: const TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    if (criterion.description.isNotEmpty) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        criterion.description,
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              // Score badge
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${scoreVal.toStringAsFixed(1)} / ${maxScore.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Slider
-                          SliderTheme(
-                            data: SliderTheme.of(context).copyWith(
-                              activeTrackColor: AppColors.primary,
-                              thumbColor: AppColors.primary,
-                              inactiveTrackColor: const Color(0xFFE2E8F0),
-                              overlayColor: AppColors.primary.withValues(alpha: 0.15),
-                              trackHeight: 6,
-                            ),
-                            child: Slider(
-                              value: scoreVal.clamp(0.0, maxScore),
-                              min: 0.0,
-                              max: maxScore,
-                              divisions: maxScore <= 20 ? (maxScore * 2).toInt() : maxScore.toInt(),
-                              label: scoreVal.toStringAsFixed(1),
-                              onChanged: (val) {
-                                _updateScore(criterion.id, val, maxScore);
-                              },
+                          Text(
+                            widget.contestant.name,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.textPrimary,
                             ),
                           ),
-
-                          // Stepper quick adjust buttons
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
-                                children: [
-                                  IconButton.filledTonal(
-                                    visualDensity: VisualDensity.compact,
-                                    icon: const Icon(Icons.remove, size: 16),
-                                    onPressed: scoreVal > 0
-                                        ? () => _updateScore(criterion.id, scoreVal - 1, maxScore)
-                                        : null,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  IconButton.filledTonal(
-                                    visualDensity: VisualDensity.compact,
-                                    icon: const Icon(Icons.add, size: 16),
-                                    onPressed: scoreVal < maxScore
-                                        ? () => _updateScore(criterion.id, scoreVal + 1, maxScore)
-                                        : null,
-                                  ),
-                                ],
+                          if (widget.contestant.representation.isNotEmpty)
+                            Text(
+                              widget.contestant.representation,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.primary,
                               ),
-                              Text(
-                                'Weight: ${criterion.weightPercentage.toStringAsFixed(0)}%',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textMuted,
-                                ),
+                            ),
+                          if (widget.contestant.bio.isNotEmpty)
+                            Text(
+                              widget.contestant.bio,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
                               ),
-                            ],
-                          ),
+                            ),
                         ],
                       ),
                     ),
-                  );
-                }),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+
+              // Criteria List (Sorted as configured by Admin)
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    ...activeCriteria.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final criterion = entry.value;
+                      final maxScore = criterion.maxScore;
+                      final scoreVal = _scores[criterion.id] ??
+                          widget.existingScore?.criteriaScores[criterion.id] ??
+                          (maxScore * 0.8).roundToDouble();
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 14),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          criterion.name,
+                                          style: const TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
+                                        if (criterion.description.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            criterion.description,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: AppColors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                  // Score badge
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '${scoreVal.toStringAsFixed(1)} / ${maxScore.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // Slider
+                              SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  activeTrackColor: AppColors.primary,
+                                  thumbColor: AppColors.primary,
+                                  inactiveTrackColor: const Color(0xFFE2E8F0),
+                                  overlayColor: AppColors.primary.withValues(alpha: 0.15),
+                                  trackHeight: 6,
+                                ),
+                                child: Slider(
+                                  value: scoreVal.clamp(0.0, maxScore),
+                                  min: 0.0,
+                                  max: maxScore,
+                                  divisions: maxScore <= 20 ? (maxScore * 2).toInt() : maxScore.toInt(),
+                                  label: scoreVal.toStringAsFixed(1),
+                                  onChanged: (val) {
+                                    _updateScore(criterion.id, val, maxScore);
+                                  },
+                                ),
+                              ),
+
+                              // Stepper quick adjust buttons
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      IconButton.filledTonal(
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.remove, size: 16),
+                                        onPressed: scoreVal > 0
+                                            ? () => _updateScore(criterion.id, scoreVal - 1, maxScore)
+                                            : null,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      IconButton.filledTonal(
+                                        visualDensity: VisualDensity.compact,
+                                        icon: const Icon(Icons.add, size: 16),
+                                        onPressed: scoreVal < maxScore
+                                            ? () => _updateScore(criterion.id, scoreVal + 1, maxScore)
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
+                                  Text(
+                                    'Weight: ${criterion.weightPercentage.toStringAsFixed(0)}%',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
 
                 // Remarks Field
                 Card(
@@ -477,7 +532,7 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
                   const SizedBox(width: 20),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _confirmAndSubmit,
+                      onPressed: _isSubmitting ? null : () => _confirmAndSubmit(activeCriteria),
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size.fromHeight(48),
                         backgroundColor: AppColors.primary,
@@ -504,6 +559,8 @@ class _JudgeScorecardScreenState extends State<JudgeScorecardScreen> {
           ),
         ],
       ),
+    );
+      },
     );
   }
 }

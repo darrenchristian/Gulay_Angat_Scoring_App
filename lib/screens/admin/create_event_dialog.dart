@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
-import '../../models/event_model.dart';
+import '../../models/models.dart';
 import '../../services/firestore_service.dart';
 
 class CreateEventDialog extends StatefulWidget {
@@ -14,7 +14,8 @@ class _CreateEventDialogState extends State<CreateEventDialog> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  int _judgeCount = 3;
+  final Set<String> _selectedJudgeIds = {};
+  bool _initializedSelection = false;
   bool _isSubmitting = false;
 
   @override
@@ -30,24 +31,23 @@ class _CreateEventDialogState extends State<CreateEventDialog> {
     setState(() => _isSubmitting = true);
 
     try {
+      final assignedList = _selectedJudgeIds.toList();
       final newEvent = EventModel(
         id: '',
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         status: EventStatus.draft,
-        judgeCount: _judgeCount,
+        judgeCount: assignedList.length,
+        assignedJudgeIds: assignedList,
         createdAt: DateTime.now(),
       );
 
-      final eventId = await FirestoreService().createEvent(newEvent);
-
-      // Auto-generate initial judge accounts
-      if (_judgeCount > 0) {
-        await FirestoreService().generateJudgesForEvent(
-          eventId: eventId,
-          count: _judgeCount,
-        );
-      }
+      await FirestoreService().createEvent(newEvent).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw Exception(
+          'Connection timed out. Please check your internet connection.',
+        ),
+      );
 
       if (mounted) {
         Navigator.of(context).pop(true);
@@ -61,10 +61,12 @@ class _CreateEventDialogState extends State<CreateEventDialog> {
     } catch (e) {
       if (mounted) {
         setState(() => _isSubmitting = false);
+        final errorText = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to create event: $e'),
+            content: Text(errorText),
             backgroundColor: AppColors.danger,
+            duration: const Duration(seconds: 6),
           ),
         );
       }
@@ -76,7 +78,7 @@ class _CreateEventDialogState extends State<CreateEventDialog> {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
+        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 620),
         child: Padding(
           padding: const EdgeInsets.all(22.0),
           child: Form(
@@ -111,7 +113,7 @@ class _CreateEventDialogState extends State<CreateEventDialog> {
                   controller: _titleController,
                   decoration: const InputDecoration(
                     labelText: 'Event Title',
-                    hintText: 'e.g. Annual Vocal Competition 2026',
+                    hintText: 'e.g. Clay Modelling Competition',
                   ),
                   validator: (val) {
                     if (val == null || val.trim().isEmpty) {
@@ -130,61 +132,138 @@ class _CreateEventDialogState extends State<CreateEventDialog> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Column(
+
+                // Global Judges Pool Selector
+                Flexible(
+                  child: StreamBuilder<List<JudgeModel>>(
+                    stream: FirestoreService().getGlobalJudgesStream(),
+                    builder: (context, snapshot) {
+                      final allJudges = snapshot.data ?? [];
+
+                      // Default select all active judges on first load
+                      if (!_initializedSelection && snapshot.hasData) {
+                        _initializedSelection = true;
+                        for (final j in allJudges.where((j) => j.isActive)) {
+                          _selectedJudgeIds.add(j.id);
+                        }
+                      }
+
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Number of Judges',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                              color: AppColors.textPrimary,
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Link Judges (${_selectedJudgeIds.length} selected)',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              if (allJudges.isNotEmpty)
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      if (_selectedJudgeIds.length == allJudges.length) {
+                                        _selectedJudgeIds.clear();
+                                      } else {
+                                        _selectedJudgeIds.addAll(allJudges.map((j) => j.id));
+                                      }
+                                    });
+                                  },
+                                  child: Text(
+                                    _selectedJudgeIds.length == allJudges.length
+                                        ? 'Clear All'
+                                        : 'Select All',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          if (allJudges.isEmpty)
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppColors.cardBorder),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.info_outline_rounded, size: 18, color: AppColors.textSecondary),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'No global judges in pool yet. You can create and link judges anytime after creating the event.',
+                                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            Flexible(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: AppColors.cardBorder),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  itemCount: allJudges.length,
+                                  separatorBuilder: (_, _) => const Divider(height: 1),
+                                  itemBuilder: (context, index) {
+                                    final judge = allJudges[index];
+                                    final isChecked = _selectedJudgeIds.contains(judge.id);
+
+                                    return CheckboxListTile(
+                                      dense: true,
+                                      value: isChecked,
+                                      activeColor: AppColors.primary,
+                                      onChanged: (val) {
+                                        setState(() {
+                                          if (val == true) {
+                                            _selectedJudgeIds.add(judge.id);
+                                          } else {
+                                            _selectedJudgeIds.remove(judge.id);
+                                          }
+                                        });
+                                      },
+                                      title: Text(
+                                        judge.displayName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      subtitle: Text(
+                                        judge.accessCode,
+                                        style: const TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontSize: 11,
+                                          color: AppColors.judgeBadge,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
                             ),
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            'Generates unique IDs automatically',
-                            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                          ),
                         ],
-                      ),
-                    ),
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.cardBorder),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove, size: 18),
-                            onPressed: _judgeCount > 1
-                                ? () => setState(() => _judgeCount--)
-                                : null,
-                          ),
-                          Text(
-                            '$_judgeCount',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.add, size: 18),
-                            onPressed: _judgeCount < 20
-                                ? () => setState(() => _judgeCount++)
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                      );
+                    },
+                  ),
                 ),
-                const SizedBox(height: 24),
+
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
