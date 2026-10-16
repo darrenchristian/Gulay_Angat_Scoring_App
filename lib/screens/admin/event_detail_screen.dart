@@ -6,6 +6,7 @@ import '../../providers/event_provider.dart';
 import '../../services/firestore_service.dart';
 import 'criteria_manager_view.dart';
 import 'contestant_manager_view.dart';
+import 'contestant_elimination_view.dart';
 import 'judge_generator_view.dart';
 import 'consolidated_results_view.dart';
 
@@ -26,7 +27,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> with SingleTicker
   void initState() {
     super.initState();
     _currentEvent = widget.event;
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<EventProvider>().setSelectedEvent(_currentEvent);
@@ -171,6 +172,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> with SingleTicker
           tabs: const [
             Tab(icon: Icon(Icons.rule_folder_outlined), text: 'Criteria'),
             Tab(icon: Icon(Icons.people_alt_outlined), text: 'Contestants'),
+            Tab(icon: Icon(Icons.person_off_outlined), text: 'Elimination'),
             Tab(icon: Icon(Icons.badge_outlined), text: 'Judges'),
             Tab(icon: Icon(Icons.leaderboard_outlined), text: 'Live Results'),
           ],
@@ -181,6 +183,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> with SingleTicker
         children: [
           CriteriaManagerView(event: _currentEvent),
           ContestantManagerView(event: _currentEvent),
+          ContestantEliminationView(event: _currentEvent),
           JudgeGeneratorView(event: _currentEvent),
           ConsolidatedResultsView(event: _currentEvent),
         ],

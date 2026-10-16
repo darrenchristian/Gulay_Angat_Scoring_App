@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 #include "flutter_window.h"
 #include "utils.h"
@@ -102,12 +103,30 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  Win32Window::Point origin(10, 10);
+  Win32Window::Size size(1280, 800);
+  std::wstring window_title = L"GulayAngat ScoreSync";
+
+  for (const auto& arg : command_line_arguments) {
+    if (arg == "--instance=1") {
+      origin = Win32Window::Point(10, 10);
+      size = Win32Window::Size(960, 840);
+      window_title = L"GulayAngat ScoreSync - Instance 1 (Admin)";
+    } else if (arg == "--instance=2") {
+      origin = Win32Window::Point(980, 10);
+      size = Win32Window::Size(600, 500);
+      window_title = L"GulayAngat ScoreSync - Instance 2 (Judge 1)";
+    } else if (arg == "--instance=3") {
+      origin = Win32Window::Point(980, 530);
+      size = Win32Window::Size(600, 500);
+      window_title = L"GulayAngat ScoreSync - Instance 3 (Judge 2)";
+    }
+  }
+
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
-  Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1280, 800);
-  if (!window.Create(L"GulayAngat ScoreSync", origin, size)) {
+  if (!window.Create(window_title, origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class CriterionModel {
   final String id;
   final String eventId;
+  final String groupId; // links criterion to its CriteriaGroupModel (empty string = default/ungrouped)
   final String name;
   final String description;
   final double maxScore;
@@ -12,6 +13,7 @@ class CriterionModel {
   CriterionModel({
     required this.id,
     required this.eventId,
+    this.groupId = '',
     required this.name,
     this.description = '',
     this.maxScore = 100.0,
@@ -22,6 +24,7 @@ class CriterionModel {
   CriterionModel copyWith({
     String? id,
     String? eventId,
+    String? groupId,
     String? name,
     String? description,
     double? maxScore,
@@ -31,6 +34,7 @@ class CriterionModel {
     return CriterionModel(
       id: id ?? this.id,
       eventId: eventId ?? this.eventId,
+      groupId: groupId ?? this.groupId,
       name: name ?? this.name,
       description: description ?? this.description,
       maxScore: maxScore ?? this.maxScore,
@@ -42,6 +46,7 @@ class CriterionModel {
   Map<String, dynamic> toMap() {
     return {
       'eventId': eventId,
+      'groupId': groupId,
       'name': name,
       'description': description,
       'maxScore': maxScore,
@@ -60,6 +65,7 @@ class CriterionModel {
     return CriterionModel(
       id: id,
       eventId: map['eventId'] as String? ?? '',
+      groupId: map['groupId'] as String? ?? '',
       name: map['name'] as String? ?? 'Criterion',
       description: map['description'] as String? ?? '',
       maxScore: (map['maxScore'] as num?)?.toDouble() ?? 100.0,

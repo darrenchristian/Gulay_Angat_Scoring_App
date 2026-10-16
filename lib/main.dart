@@ -11,8 +11,9 @@ import 'screens/admin/admin_home_screen.dart';
 import 'screens/judge/judge_home_screen.dart';
 import 'services/auth_service.dart';
 import 'services/firestore_service.dart';
+import 'services/local_session_storage.dart';
 
-void main() async {
+void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
@@ -20,6 +21,25 @@ void main() async {
     );
   }
   FirestoreService.resetGeneration();
+
+  String instanceId = '';
+  String? role;
+  for (final arg in args) {
+    if (arg.startsWith('--instance=')) {
+      instanceId = arg.replaceFirst('--instance=', '');
+    } else if (arg.startsWith('--role=')) {
+      role = arg.replaceFirst('--role=', '');
+    } else if (arg == '--judge') {
+      role = 'judge';
+    } else if (arg == '--admin') {
+      role = 'admin';
+    }
+  }
+
+  LocalSessionStorage.instanceSuffix = instanceId;
+  AppAuthProvider.configuredInstanceId = instanceId;
+  AppAuthProvider.forcedRole = role;
+
   runApp(const ScoringApp());
 }
 

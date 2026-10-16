@@ -182,6 +182,122 @@ class FirestoreService {
     return EventModel.fromFirestore(doc);
   }
 
+  // ------------------ CRITERIA GROUPS ------------------ //
+  Stream<List<CriteriaGroupModel>> getCriteriaGroupsStream(String eventId) {
+    return _safeStream(
+      _firestore
+          .collection('events')
+          .doc(eventId)
+          .collection('criteria_groups')
+          .orderBy('order')
+          .snapshots()
+          .map((snapshot) {
+        final list = snapshot.docs
+            .map((doc) => CriteriaGroupModel.fromFirestore(doc))
+            .toList();
+        list.sort((a, b) {
+          final cmp = a.order.compareTo(b.order);
+          if (cmp != 0) return cmp;
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        });
+        return list;
+      }),
+    );
+  }
+
+  Future<void> addCriteriaGroup(CriteriaGroupModel group) async {
+    final col = _firestore
+        .collection('events')
+        .doc(group.eventId)
+        .collection('criteria_groups');
+
+    int targetOrder = group.order;
+    if (targetOrder <= 0) {
+      final existing = await col.get();
+      if (existing.docs.isNotEmpty) {
+        int maxOrder = -1;
+        for (final doc in existing.docs) {
+          final o = (doc.data()['order'] as num?)?.toInt() ?? 0;
+          if (o > maxOrder) maxOrder = o;
+        }
+        targetOrder = maxOrder + 1;
+      } else {
+        targetOrder = 0;
+      }
+    }
+
+    final data = group.toMap()..['order'] = targetOrder;
+
+    if (group.id.isEmpty) {
+      await col.add(data);
+    } else {
+      await col.doc(group.id).set(data);
+    }
+  }
+
+  Future<void> updateCriteriaGroup(CriteriaGroupModel group) async {
+    await _firestore
+        .collection('events')
+        .doc(group.eventId)
+        .collection('criteria_groups')
+        .doc(group.id)
+        .update(group.toMap());
+  }
+
+  Future<void> setCriteriaGroupLock({
+    required String eventId,
+    required String groupId,
+    required bool isLocked,
+  }) async {
+    await _firestore
+        .collection('events')
+        .doc(eventId)
+        .collection('criteria_groups')
+        .doc(groupId)
+        .update({
+      'isLocked': isLocked,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> reorderCriteriaGroups(
+    String eventId,
+    List<CriteriaGroupModel> orderedGroups,
+  ) async {
+    final batch = _firestore.batch();
+    final col = _firestore
+        .collection('events')
+        .doc(eventId)
+        .collection('criteria_groups');
+
+    for (int i = 0; i < orderedGroups.length; i++) {
+      final grp = orderedGroups[i];
+      if (grp.id.isNotEmpty) {
+        batch.update(col.doc(grp.id), {'order': i});
+      }
+    }
+    await batch.commit();
+  }
+
+  Future<void> deleteCriteriaGroup(String eventId, String groupId) async {
+    final eventRef = _firestore.collection('events').doc(eventId);
+    await eventRef.collection('criteria_groups').doc(groupId).delete();
+
+    // Reassign any criteria belonging to this group to empty/ungrouped
+    final critSnap = await eventRef
+        .collection('criteria')
+        .where('groupId', isEqualTo: groupId)
+        .get();
+
+    if (critSnap.docs.isNotEmpty) {
+      final batch = _firestore.batch();
+      for (final doc in critSnap.docs) {
+        batch.update(doc.reference, {'groupId': ''});
+      }
+      await batch.commit();
+    }
+  }
+
   // ------------------ CRITERIA ------------------ //
   Stream<List<CriterionModel>> getCriteriaStream(String eventId) {
     return _safeStream(
@@ -315,6 +431,22 @@ class FirestoreService {
         .collection('contestants')
         .doc(contestant.id)
         .update(contestant.toMap());
+  }
+
+  Future<void> setContestantElimination({
+    required String eventId,
+    required String contestantId,
+    required bool isEliminated,
+  }) async {
+    await _firestore
+        .collection('events')
+        .doc(eventId)
+        .collection('contestants')
+        .doc(contestantId)
+        .update({
+      'isEliminated': isEliminated,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> deleteContestant(String eventId, String contestantId) async {
@@ -535,13 +667,14 @@ class FirestoreService {
     );
   }
 
-  /// Pre-fetches event criteria, contestants, and scores into Firestore's local
+  /// Pre-fetches event criteria groups, criteria, contestants, and scores into Firestore's local
   /// disk cache so the Judge can continue scoring seamlessly if Wi-Fi drops.
   Future<void> warmUpEventCache(String eventId) async {
     try {
       final eventRef = _firestore.collection('events').doc(eventId);
       await Future.wait([
         eventRef.get().timeout(const Duration(seconds: 3)),
+        eventRef.collection('criteria_groups').orderBy('order').get().timeout(const Duration(seconds: 3)),
         eventRef.collection('criteria').orderBy('order').get().timeout(const Duration(seconds: 3)),
         eventRef.collection('contestants').orderBy('number').get().timeout(const Duration(seconds: 3)),
         eventRef.collection('scores').get().timeout(const Duration(seconds: 3)),

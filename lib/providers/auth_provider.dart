@@ -27,6 +27,13 @@ class AppAuthProvider extends ChangeNotifier {
   bool get isAdmin => _role == UserRole.admin;
   bool get isJudge => _role == UserRole.judge;
 
+  static String? forcedRole;
+  static String configuredInstanceId = '';
+
+  static bool get isJudgeInstance =>
+      forcedRole == 'judge' ||
+      (configuredInstanceId.isNotEmpty && configuredInstanceId != '1');
+
   AppAuthProvider() {
     _init();
   }
@@ -43,26 +50,28 @@ class AppAuthProvider extends ChangeNotifier {
   void _init() {
     _restoreLocalJudgeSessionIfNeeded();
 
-    _authSubscription = _authService.authStateChanges.listen((User? user) {
-      if (_isDisposed || !_hasActiveFlutterView) {
-        _authSubscription?.cancel();
-        _authSubscription = null;
-        return;
-      }
-      if (user != null) {
-        _role = UserRole.admin;
-      } else if (_role != UserRole.judge) {
-        _role = UserRole.guest;
-      }
-      notifyListeners();
-    });
+    if (!isJudgeInstance) {
+      _authSubscription = _authService.authStateChanges.listen((User? user) {
+        if (_isDisposed || !_hasActiveFlutterView) {
+          _authSubscription?.cancel();
+          _authSubscription = null;
+          return;
+        }
+        if (user != null) {
+          _role = UserRole.admin;
+        } else if (_role != UserRole.judge) {
+          _role = UserRole.guest;
+        }
+        notifyListeners();
+      });
+    }
   }
 
   Future<void> _restoreLocalJudgeSessionIfNeeded() async {
     try {
-      if (_authService.currentUser != null) return;
+      if (!isJudgeInstance && _authService.currentUser != null) return;
       final saved = await _localSession.loadJudgeSession();
-      if (saved != null && _authService.currentUser == null && !_isDisposed) {
+      if (saved != null && !_isDisposed) {
         _judgeSession = JudgeSession(
           judge: saved.judge,
           event: saved.selectedEvent,

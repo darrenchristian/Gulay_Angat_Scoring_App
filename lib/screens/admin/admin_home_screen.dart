@@ -64,6 +64,9 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
               'assets/gulay_angat_logo.png',
               height: 30,
               fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) {
+                return const Icon(Icons.eco_rounded, size: 24, color: AppColors.primary);
+              },
             ),
             const SizedBox(width: 10),
             Expanded(

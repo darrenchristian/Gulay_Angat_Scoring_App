@@ -1,0 +1,53 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://microsoft.com
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "scoring_app",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "scoring_app (profile mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "scoring_app (release mode)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "scoring_app - Instance 1",
+            "request": "launch",
+            "type": "dart",
+            "deviceId": "windows"
+        },
+        {
+            "name": "scoring_app - Instance 2",
+            "request": "launch",
+            "type": "dart",
+            "deviceId": "windows"
+        },
+        {
+            "name": "scoring_app - Instance 3",
+            "request": "launch",
+            "type": "dart",
+            "deviceId": "windows"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Run 3 Windows Instances",
+            "configurations": [
+                "scoring_app - Instance 1",
+                "scoring_app - Instance 2",
+                "scoring_app - Instance 3"
+            ]
+        }
+    ]
+}

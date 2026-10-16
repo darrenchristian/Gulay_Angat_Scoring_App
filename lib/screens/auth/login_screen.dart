@@ -27,7 +27,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: AppAuthProvider.isJudgeInstance ? 1 : 0,
+    );
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) {
         context.read<AppAuthProvider>().clearError();
@@ -92,6 +96,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     'assets/gulay_angat_logo.png',
                     height: 120,
                     fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        height: 120,
+                        width: 120,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.eco_rounded, size: 60, color: AppColors.primary),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   const Text(

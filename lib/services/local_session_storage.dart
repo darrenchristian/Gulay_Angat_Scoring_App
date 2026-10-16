@@ -19,11 +19,14 @@ class LocalSessionStorage {
   factory LocalSessionStorage() => _instance;
   LocalSessionStorage._internal();
 
+  static String instanceSuffix = '';
+
   File? _getSessionFile() {
     if (kIsWeb) return null;
     try {
       final dir = Directory.systemTemp;
-      return File('${dir.path}${Platform.pathSeparator}scoring_app_judge_session.json');
+      final suffix = instanceSuffix.isNotEmpty ? '_$instanceSuffix' : '';
+      return File('${dir.path}${Platform.pathSeparator}scoring_app_judge_session$suffix.json');
     } catch (_) {
       return null;
     }

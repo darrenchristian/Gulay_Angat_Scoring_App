@@ -8,6 +8,7 @@ class ContestantModel {
   final String representation;
   final String bio;
   final String? photoUrl;
+  final bool isEliminated;
 
   ContestantModel({
     required this.id,
@@ -17,6 +18,7 @@ class ContestantModel {
     this.representation = '',
     this.bio = '',
     this.photoUrl,
+    this.isEliminated = false,
   });
 
   ContestantModel copyWith({
@@ -27,6 +29,7 @@ class ContestantModel {
     String? representation,
     String? bio,
     String? photoUrl,
+    bool? isEliminated,
   }) {
     return ContestantModel(
       id: id ?? this.id,
@@ -36,6 +39,7 @@ class ContestantModel {
       representation: representation ?? this.representation,
       bio: bio ?? this.bio,
       photoUrl: photoUrl ?? this.photoUrl,
+      isEliminated: isEliminated ?? this.isEliminated,
     );
   }
 
@@ -47,6 +51,7 @@ class ContestantModel {
       'representation': representation,
       'bio': bio,
       'photoUrl': photoUrl,
+      'isEliminated': isEliminated,
       'updatedAt': FieldValue.serverTimestamp(),
     };
   }
@@ -65,6 +70,7 @@ class ContestantModel {
       representation: map['representation'] as String? ?? '',
       bio: map['bio'] as String? ?? '',
       photoUrl: map['photoUrl'] as String?,
+      isEliminated: map['isEliminated'] as bool? ?? false,
     );
   }
 }
